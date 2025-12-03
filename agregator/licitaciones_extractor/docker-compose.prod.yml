@@ -1,0 +1,102 @@
+# Production Docker Compose for Licitaciones Extractor
+# Designed to work with external PostgreSQL database (Neon)
+
+version: '3.8'
+
+services:
+  # Main application service
+  licitaciones-extractor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: licitaciones_extractor_prod
+    restart: unless-stopped
+    environment:
+      # Database configuration (use external Neon database)
+      - POSTGRES_URL=${POSTGRES_URL}
+      - DB_POOL_SIZE=${DB_POOL_SIZE:-10}
+      - DB_MAX_OVERFLOW=${DB_MAX_OVERFLOW:-20}
+      - DB_POOL_RECYCLE=${DB_POOL_RECYCLE:-300}
+
+      # API Keys
+      - LICITA_YA_API_KEY=${LICITA_YA_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+      # Extraction configuration
+      - EXTRACTION_TIME=${EXTRACTION_TIME:-06:00}
+      - TIMEZONE=${TIMEZONE:-America/Mexico_City}
+      - BATCH_SIZE=${BATCH_SIZE:-100}
+      - MAX_EXECUTION_TIME=${MAX_EXECUTION_TIME:-3600}
+
+      # Logging configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_CONSOLE=true
+      - LOG_STRUCTURED=true
+
+      # Browser configuration for scraping
+      - HEADLESS_BROWSER=true
+      - SELENIUM_TIMEOUT=30
+
+      # Production mode
+      - DEVELOPMENT_MODE=false
+      - DEBUG=false
+    volumes:
+      # Persistent storage for logs
+      - ./logs:/app/logs
+      # Optional: Configuration overrides
+      - ./.env:/app/.env:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "from src.database.connection import DatabaseConnection; dc = DatabaseConnection(); dc.test_connection()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - licitaciones_prod
+    # Uncomment to expose dashboard
+    # ports:
+    #   - "5000:5000"
+
+  # Optional: Monitoring dashboard (separate container)
+  licitaciones-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: licitaciones_dashboard_prod
+    restart: unless-stopped
+    command: ["python", "src/main.py", "--mode=dashboard", "--host=0.0.0.0", "--port=5000"]
+    environment:
+      - POSTGRES_URL=${POSTGRES_URL}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    ports:
+      - "5000:5000"
+    depends_on:
+      licitaciones-extractor:
+        condition: service_healthy
+    networks:
+      - licitaciones_prod
+    profiles:
+      - dashboard  # Start with: docker-compose --profile dashboard up
+
+  # Optional: Redis for caching (if needed for production)
+  redis:
+    image: redis:7-alpine
+    container_name: licitaciones_redis_prod
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - licitaciones_prod
+    profiles:
+      - redis  # Start with: docker-compose --profile redis up
+
+volumes:
+  redis_data:
+
+networks:
+  licitaciones_prod:
+    driver: bridge

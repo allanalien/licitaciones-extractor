@@ -1,0 +1,60 @@
+# Core dependencies
+requests>=2.28.0
+psycopg2-binary>=2.9.0
+sqlalchemy>=1.4.0
+python-dotenv>=0.19.0
+pydantic>=1.10.0
+
+# Web scraping
+selenium>=4.0.0
+beautifulsoup4>=4.11.0
+webdriver-manager>=3.8.0
+
+# Data processing
+pandas>=1.5.0
+numpy>=1.24.0
+
+# AI/ML dependencies
+openai>=0.27.0
+tiktoken>=0.4.0
+
+# Logging and monitoring
+loguru>=0.6.0
+
+# Scheduling and async
+schedule>=1.2.0
+tenacity>=8.2.0
+
+# HTTP retries and reliability
+urllib3>=1.26.0
+
+# Date/time handling
+python-dateutil>=2.8.0
+pytz>=2022.7
+
+# System monitoring
+psutil>=5.9.0
+
+# Dashboard and web interface
+flask>=2.3.0
+flask-cors>=4.0.0
+plotly>=5.14.0
+
+# Alerting and notifications (optional)
+# email support included in standard library
+# For Slack: slack-sdk>=3.21.0
+# For additional monitoring: prometheus-client>=0.16.0
+
+# Development and testing
+pytest>=7.2.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+black>=23.0.0
+flake8>=6.0.0
+
+# Optional: Vector database support (when available)
+# pgvector>=0.2.0
+
+# Optional: Additional data processing
+# xlsxwriter>=3.0.0
+# openpyxl>=3.1.0

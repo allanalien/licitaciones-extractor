@@ -1,0 +1,60 @@
+# Docker Compose for development environment
+# Note: This is for local development only
+# Production uses external PostgreSQL (Neon)
+
+version: '3.8'
+
+services:
+  # Local PostgreSQL for development/testing
+  postgres-dev:
+    image: postgres:15
+    container_name: licitaciones_postgres_dev
+    environment:
+      POSTGRES_DB: licitaciones_dev
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./src/database/schema.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - licitaciones_net
+
+  # Redis for caching (optional)
+  redis-dev:
+    image: redis:7-alpine
+    container_name: licitaciones_redis_dev
+    ports:
+      - "6379:6379"
+    networks:
+      - licitaciones_net
+
+  # Application container
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: licitaciones_app_dev
+    environment:
+      - POSTGRES_URL=postgresql://dev_user:dev_password@postgres-dev:5432/licitaciones_dev
+      - LOG_LEVEL=DEBUG
+      - DEVELOPMENT_MODE=true
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres-dev
+    networks:
+      - licitaciones_net
+    profiles:
+      - app  # Only start with: docker-compose --profile app up
+
+volumes:
+  postgres_dev_data:
+
+networks:
+  licitaciones_net:
+    driver: bridge

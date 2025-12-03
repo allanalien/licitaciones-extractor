@@ -241,3 +241,5 @@ Ver [DEPLOYMENT.md](DEPLOYMENT.md) para guía completa de deployment.
 **Desarrollado para extracción inteligente de licitaciones públicas mexicanas**
 
 Para comenzar: `./scripts/deploy.sh --dashboard`
+
+

@@ -225,9 +225,24 @@ def run_daily_job():
         raise
 
 def run_scheduler():
-    """Run the continuous scheduler."""
+    """Run the continuous scheduler with health monitoring."""
     logger = get_logger("main.scheduler")
     logger.logger.info("Starting continuous scheduler")
+
+    # Start health check server in a separate thread (for Railway)
+    import threading
+    health_thread = None
+
+    if os.getenv("PORT"):  # Railway provides PORT environment variable
+        try:
+            from src.health import start_health_server
+            port = int(os.getenv("PORT", 8080))
+            health_thread = threading.Thread(target=start_health_server, args=(port,))
+            health_thread.daemon = True
+            health_thread.start()
+            logger.logger.info(f"Health check server started on port {port}")
+        except Exception as e:
+            logger.logger.warning(f"Failed to start health server: {e}")
 
     # Initialize scheduler
     scheduler = DailyScheduler()

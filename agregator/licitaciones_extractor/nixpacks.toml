@@ -1,0 +1,5 @@
+[start]
+cmd = "python src/main.py --mode=scheduler"
+
+[variables]
+NIXPACKS_PYTHON_VERSION = "3.11"

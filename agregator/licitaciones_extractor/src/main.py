@@ -374,13 +374,84 @@ def run_dashboard(host="127.0.0.1", port=5000):
         logger.logger.error(f"Dashboard error: {e}")
         raise
 
+def fix_database_ids(check_only=False):
+    """Fix database ID sequence to start from 1."""
+    logger = get_logger("main.fix_ids")
+
+    try:
+        from src.database.connection import DatabaseConnection
+
+        logger.logger.info("Checking database ID sequence...")
+        db_conn = DatabaseConnection()
+
+        with db_conn.get_session() as session:
+            # Get current stats
+            count_result = session.execute("SELECT COUNT(*) FROM updates").fetchone()
+            total_records = count_result[0] if count_result else 0
+
+            if total_records == 0:
+                logger.logger.info("Database is empty - resetting sequence to start from 1")
+                session.execute("ALTER SEQUENCE updates_id_seq RESTART WITH 1")
+                session.commit()
+                logger.logger.info("✅ Sequence reset to start from 1")
+                return True
+
+            # Get ID range
+            min_result = session.execute("SELECT MIN(id) FROM updates").fetchone()
+            max_result = session.execute("SELECT MAX(id) FROM updates").fetchone()
+            min_id = min_result[0] if min_result else 0
+            max_id = max_result[0] if max_result else 0
+
+            # Get sequence value
+            try:
+                seq_result = session.execute("SELECT last_value FROM updates_id_seq").fetchone()
+                seq_value = seq_result[0] if seq_result else 0
+            except:
+                seq_value = max_id
+
+            logger.logger.info(f"Database stats: {total_records} records, ID range {min_id}-{max_id}, sequence at {seq_value}")
+
+            if check_only:
+                if min_id == 1 and total_records == max_id:
+                    logger.logger.info("✅ ID sequence is correct")
+                    return True
+                else:
+                    logger.logger.warning(f"⚠️ ID sequence needs fixing - starts at {min_id}, should start at 1")
+                    return False
+
+            # Fix the sequence
+            if min_id != 1:
+                logger.logger.info("Fixing ID sequence to start from 1...")
+
+                # Create new sequential IDs
+                session.execute("ALTER TABLE updates ADD COLUMN new_id SERIAL")
+                session.execute("ALTER TABLE updates DROP CONSTRAINT updates_pkey")
+                session.execute("ALTER TABLE updates DROP COLUMN id")
+                session.execute("ALTER TABLE updates RENAME COLUMN new_id TO id")
+                session.execute("ALTER TABLE updates ADD PRIMARY KEY (id)")
+                session.commit()
+
+                logger.logger.info("✅ ID sequence fixed - now starts from 1")
+                return True
+            else:
+                # Just fix the sequence value
+                next_val = max_id + 1
+                session.execute(f"SELECT setval('updates_id_seq', {max_id})")
+                session.commit()
+                logger.logger.info(f"✅ Sequence synchronized - next ID will be {next_val}")
+                return True
+
+    except Exception as e:
+        logger.logger.error(f"Error fixing database IDs: {e}")
+        return False
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Licitaciones Extractor")
 
     parser.add_argument(
         "--mode",
-        choices=["daily", "extract", "test", "setup", "scheduler", "monitor", "quality-report", "dashboard", "production"],
+        choices=["daily", "extract", "test", "setup", "scheduler", "monitor", "quality-report", "dashboard", "production", "fix-ids"],
         default="extract",
         help="Operation mode"
     )
@@ -481,6 +552,15 @@ def main():
         elif args.mode == "dashboard":
             logger.logger.info("Starting monitoring dashboard")
             run_dashboard(args.host, args.port)
+
+        elif args.mode == "fix-ids":
+            logger.logger.info("Fixing database ID sequence")
+            if fix_database_ids(check_only=False):
+                logger.logger.info("Database ID sequence fixed successfully")
+                sys.exit(0)
+            else:
+                logger.logger.error("Failed to fix database ID sequence")
+                sys.exit(1)
 
         elif args.mode == "production":
             target_date = None

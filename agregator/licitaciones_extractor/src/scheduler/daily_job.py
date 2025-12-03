@@ -289,42 +289,147 @@ class ExtractionOrchestrator:
 
     def _generate_semantic_text(self, normalized_data: Dict) -> str:
         """
-        Generate semantic text for embeddings from normalized data.
+        Generate comprehensive semantic text for embeddings from normalized data.
 
         Args:
             normalized_data: Normalized record data
 
         Returns:
-            Combined semantic text
+            Rich semantic text with all available information
         """
         components = []
 
-        # Add title
-        if normalized_data.get('titulo'):
-            components.append(f"Título: {normalized_data['titulo']}")
+        # Start with tender ID and title
+        tender_id = normalized_data.get('tender_id', 'ID no disponible')
+        titulo = normalized_data.get('titulo', '')
 
-        # Add description
-        if normalized_data.get('descripcion'):
-            components.append(f"Descripción: {normalized_data['descripcion']}")
+        # Clean tender_id to avoid prefixes like "comprasmx_"
+        clean_tender_id = tender_id
+        if '_' in tender_id:
+            clean_tender_id = tender_id.split('_')[-1]
 
-        # Add entity
-        if normalized_data.get('entidad'):
-            components.append(f"Entidad: {normalized_data['entidad']}")
+        # Clean title to avoid ID duplication
+        clean_titulo = titulo
+        if titulo:
+            # Remove duplicate IDs from title
+            if clean_tender_id in titulo:
+                # Remove the ID and any leading/trailing separators
+                clean_titulo = titulo.replace(clean_tender_id, '').strip(' .|')
 
-        # Add type
-        if normalized_data.get('tipo_licitacion'):
-            components.append(f"Tipo: {normalized_data['tipo_licitacion']}")
+            # Extract meaningful part from complex titles (ComprasMX format)
+            if '|' in clean_titulo:
+                parts = [part.strip() for part in clean_titulo.split('|') if part.strip()]
+                # Look for meaningful description parts
+                meaningful_parts = []
+                for part in parts:
+                    if len(part) > 10 and any(word in part.upper() for word in ['ADQUISICION', 'SERVICIOS', 'CONTRATO', 'SUMINISTRO']):
+                        meaningful_parts.append(part)
 
-        # Add location context
+                if meaningful_parts:
+                    clean_titulo = meaningful_parts[0]
+                elif parts:
+                    # Take the longest meaningful part
+                    clean_titulo = max(parts, key=len) if parts else clean_titulo
+
+        if clean_titulo and clean_titulo.strip() and not clean_titulo.lower().startswith('sin título'):
+            header = f"Licitación {clean_tender_id}: {clean_titulo}"
+        else:
+            # Try to extract meaningful info from metadata for missing titles
+            metadata = normalized_data.get('metadata', {})
+            procedimiento = metadata.get('titulo_procedimiento') or metadata.get('nombre_procedimiento')
+            if procedimiento and not procedimiento.lower().startswith('sin'):
+                header = f"Licitación {clean_tender_id}: {procedimiento}"
+            else:
+                # Use description or entity as fallback
+                descripcion = normalized_data.get('descripcion', '')
+                entidad = normalized_data.get('entidad', '')
+                if descripcion and len(descripcion) > 10:
+                    header = f"Licitación {clean_tender_id}: {descripcion[:100]}..."
+                elif entidad:
+                    header = f"Licitación {clean_tender_id} de {entidad}"
+                else:
+                    header = f"Licitación {clean_tender_id}"
+
+        components.append(header)
+
+        # Add institution/entity with fallback
+        entidad = normalized_data.get('entidad')
+        if entidad and entidad.strip():
+            components.append(f"Institución: {entidad}")
+
+        # Add procurement type
+        tipo = normalized_data.get('tipo_licitacion')
+        if tipo and tipo.strip():
+            components.append(f"Tipo de procedimiento: {tipo}")
+
+        # Add estimated value
+        valor = normalized_data.get('valor_estimado')
+        if valor:
+            if isinstance(valor, (int, float)) and valor > 0:
+                components.append(f"Monto estimado: ${valor:,.2f} MXN")
+            elif isinstance(valor, str) and valor.strip():
+                components.append(f"Monto estimado: {valor}")
+
+        # Add important dates
+        fecha_catalogacion = normalized_data.get('fecha_catalogacion')
+        if fecha_catalogacion:
+            components.append(f"Fecha de publicación: {fecha_catalogacion}")
+
+        fecha_apertura = normalized_data.get('fecha_apertura')
+        if fecha_apertura and fecha_apertura != fecha_catalogacion:
+            components.append(f"Fecha de apertura: {fecha_apertura}")
+
+        # Add description if meaningful and different from title
+        descripcion = normalized_data.get('descripcion')
+        if descripcion and descripcion.strip() and len(descripcion) > 20:
+            # Avoid duplicate if description is same as title
+            if not titulo or descripcion.lower() != titulo.lower():
+                desc_clean = descripcion[:300] + "..." if len(descripcion) > 300 else descripcion
+                components.append(f"Descripción: {desc_clean}")
+
+        # Add location information
         location_parts = []
-        if normalized_data.get('ciudad'):
-            location_parts.append(normalized_data['ciudad'])
-        if normalized_data.get('estado'):
-            location_parts.append(normalized_data['estado'])
+        ciudad = normalized_data.get('ciudad')
+        estado = normalized_data.get('estado')
+
+        if ciudad and ciudad.strip():
+            location_parts.append(ciudad)
+        if estado and estado.strip() and estado != ciudad:
+            location_parts.append(estado)
+
         if location_parts:
             components.append(f"Ubicación: {', '.join(location_parts)}")
 
-        return ". ".join(components)
+        # Add status information
+        status = normalized_data.get('status') or normalized_data.get('estado_licitacion')
+        if status and status.strip():
+            components.append(f"Estado: {status}")
+
+        # Add winner/provider if available
+        metadata = normalized_data.get('metadata', {})
+        ganador = metadata.get('proveedor_ganador') or metadata.get('adjudicatario')
+        if ganador and ganador.strip():
+            components.append(f"Proveedor ganador: {ganador}")
+
+        # Add source URL if available
+        url = normalized_data.get('url_original')
+        if url and url.strip():
+            components.append(f"URL: {url}")
+
+        # Join all components
+        semantic_text = ". ".join(components)
+
+        # Ensure minimum quality - if too short, add more context
+        if len(semantic_text) < 50:
+            # Add any additional metadata that might be useful
+            for key, value in metadata.items():
+                if isinstance(value, str) and len(value) > 5 and len(value) < 200:
+                    if key not in ['tender_id', 'url_original'] and value not in semantic_text:
+                        semantic_text += f". {key.replace('_', ' ').title()}: {value}"
+                        if len(semantic_text) > 200:
+                            break
+
+        return semantic_text
 
 
 class DailyScheduler:

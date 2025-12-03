@@ -146,9 +146,21 @@ class UnifiedNormalizer:
             entidad = clean_text(entidad) or self._get_default_entity(source)
             tipo_licitacion = clean_text(tipo_licitacion) or "Licitación"
 
-            # Ensure minimum data quality
-            if not titulo or len(titulo) < 5:
-                self.logger.warning(f"Record has insufficient title: {titulo}")
+            # Enhanced title validation with better fallbacks
+            if not titulo or len(titulo) < 5 or titulo.lower().startswith('sin título'):
+                # Try to create meaningful title from available data
+                fallback_title = self._create_meaningful_title(record, source, entidad, descripcion, tipo_licitacion)
+                if fallback_title:
+                    titulo = fallback_title
+                    self.logger.info(f"Enhanced title for {tender_id}: {titulo}")
+                else:
+                    # Still accept the record but mark title as incomplete
+                    titulo = f"Licitación {tender_id}"
+                    self.logger.warning(f"Using minimal title for record {tender_id}: {titulo}")
+
+            # Only reject if we have no useful data at all
+            if not entidad and not descripcion and len(titulo) < 10:
+                self.logger.warning(f"Record has insufficient data - rejected: {tender_id}")
                 return None
 
             # Create the normalized record
@@ -373,6 +385,99 @@ class UnifiedNormalizer:
         """
         entity = record.get('entidad', source.upper())
         return f"Licitación {entity}"
+
+    def _create_meaningful_title(self, record: Dict[str, Any], source: str,
+                               entidad: str, descripcion: str, tipo_licitacion: str) -> Optional[str]:
+        """
+        Create a meaningful title from available record data.
+
+        Args:
+            record: Original record
+            source: Source name
+            entidad: Entity name
+            descripcion: Description text
+            tipo_licitacion: Procurement type
+
+        Returns:
+            Enhanced title or None if not possible
+        """
+        # Try to extract meaningful information from different sources
+        meaningful_parts = []
+
+        # Source-specific title extraction
+        if source == 'cdmx':
+            # For CDMX/Tianguis Digital, look for specific fields
+            planning_name = record.get('planning_name') or record.get('name')
+            if planning_name and not planning_name.lower().startswith('sin'):
+                meaningful_parts.append(planning_name)
+
+            # Check for procedure type or category
+            method = record.get('hiring_method_name') or record.get('procurement_type')
+            if method and len(method) > 5:
+                meaningful_parts.append(method)
+
+        elif source == 'comprasmx':
+            # For ComprasMX, extract meaningful title from combined text
+            raw_text = record.get('all_text', '') or record.get('descripcion', '')
+
+            # Look for patterns like "C.123 ADQUISICION DE..." in the text
+            title_patterns = [
+                r'([A-Z]\.\d+\s+[A-Z][^|]*)',  # Pattern: C.123 DESCRIPTION
+                r'(\d+-\d+-\d+\s+[A-Z][^|]*)',  # Pattern: 01-24-121 DESCRIPTION
+                r'([A-Z]{3,}\s+[A-Z][^|]*)'     # Pattern: ADQUISICION DESCRIPTION
+            ]
+
+            for pattern in title_patterns:
+                match = re.search(pattern, raw_text)
+                if match:
+                    potential_title = match.group(1).strip()
+                    # Clean up the title (remove numbers at start if too long)
+                    if len(potential_title) > 10 and 'ADQUISICION' in potential_title or 'SERVICIOS' in potential_title:
+                        meaningful_parts.append(potential_title[:100])
+                        break
+
+            # Also check titulo_procedimiento as fallback
+            titulo_proc = record.get('titulo_procedimiento')
+            if not meaningful_parts and titulo_proc and not titulo_proc.lower().startswith('sin'):
+                meaningful_parts.append(titulo_proc)
+
+        elif source == 'licita_ya':
+            # For LicitaYa, check subject or summary
+            subject = record.get('subject') or record.get('summary')
+            if subject and len(subject) > 10:
+                meaningful_parts.append(subject)
+
+        # If no source-specific title, try description
+        if not meaningful_parts and descripcion and len(descripcion) > 20:
+            # Take first meaningful sentence from description
+            sentences = descripcion.split('.')
+            for sentence in sentences[:2]:  # Check first 2 sentences
+                clean_sentence = sentence.strip()
+                if len(clean_sentence) > 15 and not clean_sentence.lower().startswith('sin'):
+                    meaningful_parts.append(clean_sentence[:80])
+                    break
+
+        # If still nothing, try combining available info
+        if not meaningful_parts:
+            parts = []
+            if tipo_licitacion and tipo_licitacion != "Licitación":
+                parts.append(tipo_licitacion)
+            if entidad and entidad != source.upper():
+                parts.append(f"de {entidad}")
+
+            if parts:
+                meaningful_parts.extend(parts)
+
+        # Create final title
+        if meaningful_parts:
+            title = " - ".join(meaningful_parts[:2])  # Max 2 parts
+            # Clean and truncate
+            title = clean_text(title)
+            if len(title) > 150:
+                title = title[:147] + "..."
+            return title
+
+        return None
 
     def _get_default_entity(self, source: str) -> str:
         """

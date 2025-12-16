@@ -1,2 +1,0 @@
-worker: python main_extractor.py
-web: python -m http.server $PORT

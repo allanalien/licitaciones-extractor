@@ -1,0 +1,2 @@
+web: gunicorn app:app
+cron: ./run_daily_extraction.sh

@@ -1,0 +1,39 @@
+name: Daily Extraction
+
+on:
+  schedule:
+    # Ejecutar todos los días a las 6:00 AM UTC (0:00 AM México)
+    - cron: '0 6 * * *'
+  workflow_dispatch: # Permite ejecutar manualmente
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Chrome
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y chromium-browser chromium-chromedriver
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+
+    - name: Run extraction
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        LICITA_YA_API_KEY: ${{ secrets.LICITA_YA_API_KEY }}
+        PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+        PINECONE_ENVIRONMENT: ${{ secrets.PINECONE_ENVIRONMENT }}
+        PINECONE_INDEX_NAME: ${{ secrets.PINECONE_INDEX_NAME }}
+      run: |
+        python main_extractor.py

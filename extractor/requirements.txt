@@ -1,20 +1,34 @@
-requests>=2.28.0
-beautifulsoup4>=4.11.0
-pandas>=1.5.0
-numpy>=1.23.0
-python-dotenv>=0.19.0
-schedule>=1.1.0
-Flask>=2.0.0
-sentence-transformers>=2.2.0
-openai>=0.27.0
-lxml>=4.9.0
-selenium>=4.10.0
-webdriver-manager>=3.8.0
-psycopg2-binary>=2.9.0
-sqlalchemy>=1.4.0
-pgvector>=0.2.0
-httpx>=0.24.0
-aiohttp>=3.8.0
-loguru>=0.7.0
-tenacity>=8.2.0
-gunicorn>=20.1.0
+# Web scraping
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+selenium==4.15.2
+webdriver-manager==4.0.1
+
+# Data processing
+pandas==2.1.3
+numpy==1.24.3
+
+# Database
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
+pgvector==0.2.3
+
+# API & Web framework
+Flask==3.0.0
+gunicorn==21.2.0
+httpx==0.25.1
+aiohttp==3.9.0
+
+# AI/ML (optional)
+sentence-transformers==2.2.2
+openai==1.3.5
+
+# Utilities
+python-dotenv==1.0.0
+schedule==1.2.0
+loguru==0.7.2
+tenacity==8.2.3
+
+# Redis for Railway
+redis==5.0.1

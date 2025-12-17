@@ -279,6 +279,82 @@ def health():
     except:
         return jsonify({'status': 'unhealthy', 'database': 'disconnected'}), 500
 
+@app.route('/api/status')
+def api_status():
+    """Endpoint de status detallado del sistema"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Obtener información del sistema
+        status_info = {
+            'timestamp': datetime.now().isoformat(),
+            'environment': os.getenv('ENVIRONMENT', 'production'),
+            'database': 'connected',
+            'worker': 'running'
+        }
+
+        # Verificar últimas extracciones
+        cursor.execute("""
+            SELECT fuente, COUNT(*) as count, MAX(created_at) as last_update
+            FROM licitaciones
+            WHERE created_at > NOW() - INTERVAL '24 hours'
+            GROUP BY fuente
+        """)
+
+        extractors = []
+        for row in cursor.fetchall():
+            extractors.append({
+                'source': row['fuente'],
+                'recent_count': row['count'],
+                'last_update': row['last_update'].isoformat() if row['last_update'] else None
+            })
+
+        status_info['extractors'] = extractors
+
+        # Total de licitaciones
+        cursor.execute("SELECT COUNT(*) as total FROM licitaciones")
+        status_info['total_licitaciones'] = cursor.fetchone()['total']
+
+        cursor.close()
+        conn.close()
+
+        return jsonify(status_info), 200
+
+    except Exception as e:
+        logger.error(f"Error en status endpoint: {e}")
+        return jsonify({
+            'timestamp': datetime.now().isoformat(),
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@app.route('/api/worker/status')
+def worker_status():
+    """Estado del worker y próximas ejecuciones"""
+    import schedule
+
+    try:
+        next_runs = []
+        for job in schedule.jobs:
+            next_runs.append({
+                'job': str(job),
+                'next_run': str(job.next_run) if job.next_run else None
+            })
+
+        return jsonify({
+            'status': 'running',
+            'pid': os.getpid(),
+            'scheduled_jobs': len(schedule.jobs),
+            'next_runs': next_runs
+        }), 200
+
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
 @app.route('/api/stats')
 def api_stats():
     """API de estadísticas"""

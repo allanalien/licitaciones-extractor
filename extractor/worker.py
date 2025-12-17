@@ -91,6 +91,9 @@ class ExtractionWorker:
     def start(self):
         """Iniciar el worker"""
         logger.info("🤖 Worker de extracción iniciado")
+        logger.info(f"📍 Environment: {os.getenv('ENVIRONMENT', 'production')}")
+        logger.info(f"🔗 Database URL configured: {'✅' if os.getenv('DATABASE_URL') else '❌'}")
+        logger.info(f"🌐 Port: {os.getenv('PORT', 8080)}")
 
         # Configurar schedule
         self.setup_schedule()
@@ -99,9 +102,20 @@ class ExtractionWorker:
         self.run_once_on_start()
 
         # Loop principal
+        logger.info("💫 Worker en ejecución continua...")
+        logger.info("📊 Monitoreando en /health, /api/status y /api/worker/status")
+
+        iteration = 0
         while True:
             try:
                 schedule.run_pending()
+                iteration += 1
+
+                # Log cada 10 minutos
+                if iteration % 10 == 0:
+                    logger.info(f"💓 Worker alive - Iteration {iteration}")
+                    logger.info(f"📅 Next scheduled runs: {[str(job.next_run) for job in schedule.jobs]}")
+
                 time.sleep(60)  # Verificar cada minuto
             except KeyboardInterrupt:
                 logger.info("Worker detenido por el usuario")

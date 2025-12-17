@@ -70,7 +70,7 @@ class ExtractionWorker:
 
             # Verificar última ejecución
             cursor.execute("""
-                SELECT MAX(created_at) FROM updates
+                SELECT MAX(created_at) FROM licitaciones
             """)
             last_run = cursor.fetchone()[0]
 

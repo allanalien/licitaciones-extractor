@@ -194,36 +194,36 @@ def dashboard():
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         # Estadísticas
-        cursor.execute("SELECT COUNT(*) as total FROM updates")
+        cursor.execute("SELECT COUNT(*) as total FROM licitaciones")
         total = cursor.fetchone()['total']
 
         cursor.execute("""
-            SELECT COUNT(*) as today FROM updates
+            SELECT COUNT(*) as today FROM licitaciones
             WHERE DATE(created_at) = CURRENT_DATE
         """)
         today = cursor.fetchone()['today']
 
         cursor.execute("""
-            SELECT COUNT(*) as week FROM updates
+            SELECT COUNT(*) as week FROM licitaciones
             WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
         """)
         week = cursor.fetchone()['week']
 
         cursor.execute("""
-            SELECT COUNT(DISTINCT metadata->>'fuente') as sources
-            FROM updates
+            SELECT COUNT(DISTINCT fuente) as sources
+            FROM licitaciones
         """)
         sources = cursor.fetchone()['sources']
 
         # Últimas licitaciones
         cursor.execute("""
             SELECT
-                metadata->>'titulo' as titulo,
-                metadata->>'fuente' as fuente,
-                metadata->>'dependencia' as dependencia,
-                metadata->>'fecha_publicacion' as fecha,
+                titulo,
+                fuente,
+                dependencia,
+                fecha_publicacion as fecha,
                 created_at
-            FROM updates
+            FROM licitaciones
             ORDER BY created_at DESC
             LIMIT 10
         """)
@@ -367,17 +367,17 @@ def api_stats():
                 COUNT(*) as total,
                 COUNT(CASE WHEN DATE(created_at) = CURRENT_DATE THEN 1 END) as today,
                 COUNT(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '7 days' THEN 1 END) as last_week,
-                COUNT(DISTINCT metadata->>'fuente') as sources
-            FROM updates
+                COUNT(DISTINCT fuente) as sources
+            FROM licitaciones
         """)
         stats = cursor.fetchone()
 
         cursor.execute("""
             SELECT
-                metadata->>'fuente' as fuente,
+                fuente,
                 COUNT(*) as count
-            FROM updates
-            GROUP BY metadata->>'fuente'
+            FROM licitaciones
+            GROUP BY fuente
             ORDER BY count DESC
         """)
         by_source = cursor.fetchall()
@@ -411,17 +411,22 @@ def api_search():
         cursor.execute("""
             SELECT
                 id,
-                licitacion_id,
-                metadata,
-                texto_semantico,
+                titulo,
+                descripcion,
+                fuente,
+                dependencia,
+                fecha_publicacion,
+                fecha_limite,
+                monto,
                 created_at
-            FROM updates
+            FROM licitaciones
             WHERE
-                texto_semantico ILIKE %s OR
-                metadata::text ILIKE %s
+                titulo ILIKE %s OR
+                descripcion ILIKE %s OR
+                dependencia ILIKE %s
             ORDER BY created_at DESC
             LIMIT %s
-        """, (f'%{query}%', f'%{query}%', limit))
+        """, (f'%{query}%', f'%{query}%', f'%{query}%', limit))
 
         results = cursor.fetchall()
         cursor.close()

@@ -21,6 +21,7 @@ class Update(Base):
 
     # Vector embedding usando pgvector
     embedding = Column(Vector(1536))  # Vector de 1536 dimensiones (compatible con OpenAI)
+    vector_procesado = Column(Boolean, default=False)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)

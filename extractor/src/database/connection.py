@@ -1,6 +1,6 @@
 import os
 import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, Json
 from datetime import datetime
 from dotenv import load_dotenv
 from loguru import logger
@@ -65,11 +65,36 @@ class DatabaseConnection:
 
             cursor.execute(query, values)
             result = cursor.fetchone()
-            conn.commit()
 
             if result:
-                logger.info(f"Licitación guardada con ID: {result[0]} - {licitacion_data.get('titulo', '')[:50]}")
-                return result[0]
+                licitacion_id = result[0]
+
+                # También insertar en tabla updates para tracking
+                update_query = """
+                    INSERT INTO updates (
+                        licitacion_id,
+                        metadata,
+                        texto_semantico,
+                        fuente,
+                        vector_procesado
+                    ) VALUES (%s, %s, %s, %s, FALSE)
+                """
+
+                # Crear texto semántico para búsquedas
+                texto_semantico = f"{licitacion_data.get('titulo', '')} {licitacion_data.get('descripcion', '')} {licitacion_data.get('dependencia', '')}"
+
+                update_values = (
+                    licitacion_id,
+                    psycopg2.extras.Json(licitacion_data),
+                    texto_semantico[:1000],  # Limitar a 1000 caracteres
+                    licitacion_data.get('fuente', '')
+                )
+
+                cursor.execute(update_query, update_values)
+                conn.commit()
+
+                logger.info(f"Licitación guardada con ID: {licitacion_id} - {licitacion_data.get('titulo', '')[:50]}")
+                return licitacion_id
             return None
 
         except Exception as e:

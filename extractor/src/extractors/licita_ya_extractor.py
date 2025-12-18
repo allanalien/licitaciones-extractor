@@ -121,14 +121,14 @@ class LicitaYaExtractor:
         """Buscar licitaciones usando keywords prioritarias para optimizar consultas API"""
         try:
             # Priorizar keywords más importantes y limitar consultas
-            priority_keywords = ['alimentos', 'construcción', 'tecnología', 'servicios']
+            priority_keywords = ['alimentos', 'medicinas', 'equipo', 'obra', 'construcción', 'tecnología', 'servicios']
 
             # Usar solo keywords prioritarias si hay muchas configuradas
-            if len(self.search_keywords) > 4:
-                keywords_to_use = [kw for kw in self.search_keywords if kw in priority_keywords][:4]
+            if len(self.search_keywords) > 6:
+                keywords_to_use = [kw for kw in self.search_keywords if kw in priority_keywords][:6]
                 logger.info(f"Usando keywords prioritarias para optimizar API: {keywords_to_use}")
             else:
-                keywords_to_use = self.search_keywords[:4]  # Máximo 4 keywords
+                keywords_to_use = self.search_keywords[:6]  # Máximo 6 keywords
 
             all_licitaciones = []
             seen_ids = set()

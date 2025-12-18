@@ -254,7 +254,10 @@ class LicitaYaExtractor:
                 'estado': raw_data.get('state', ''),
                 'ciudad': raw_data.get('city', ''),
                 'codigo_postal': raw_data.get('zip', ''),
-                'unique_id': raw_data.get('unique_id', '')
+                'ciudad': raw_data.get('city', ''),
+                'codigo_postal': raw_data.get('zip', ''),
+                'unique_id': raw_data.get('unique_id') or raw_data.get('url') or f"licita_ya_{hash(str(raw_data))}",
+                'estado_geo': raw_data.get('state', '') # Preservar estado geográfico separado del estatus
             }
 
             # Procesar monto
@@ -364,44 +367,40 @@ class LicitaYaExtractor:
         keywords = [word for word in important_words if word in text_lower]
         return keywords
 
-    def create_metadata(self, raw_data: Dict) -> Dict:
-        """Crear metadata siguiendo el formato requerido similar a otros extractores"""
+    def create_metadata(self, normalized_data: Dict) -> Dict:
+        """Crear metadata usando datos ya normalizados"""
         try:
-            # Generar ID único para LicitaYa
-            unique_id = raw_data.get('unique_id', raw_data.get('url', f"licita_ya_{hash(str(raw_data))}"))
+            # Formatear fechas a string para JSON
+            fecha_pub = normalized_data.get('fecha_publicacion')
+            if isinstance(fecha_pub, datetime):
+                fecha_pub = fecha_pub.strftime('%Y-%m-%d')
+            
+            fecha_apertura = normalized_data.get('fecha_apertura')
+            if isinstance(fecha_apertura, datetime):
+                fecha_apertura = fecha_apertura.strftime('%Y-%m-%d')
 
-            # Título
-            titulo = (raw_data.get('tender_object', '') or
-                     raw_data.get('title', '') or
-                     'Sin título').strip()
-
-            # Entidad
-            entidad = (raw_data.get('agency', '') or
-                      raw_data.get('entity', '') or
-                      'NO ESPECIFICADO').strip()
-
-            # Crear metadata similar al formato de otros extractores
+            # Metadata estandarizada
             metadata = {
-                "id": unique_id,
-                "institucion": entidad,
-                "titulo": titulo,
+                "id": normalized_data.get('unique_id'),
+                "institucion": normalized_data.get('entidad', 'NO ESPECIFICADO'),
+                "titulo": normalized_data.get('titulo', 'Sin título'),
                 "tipo_procedimiento": "NO ESPECIFICADO",
-                "importe_drc": 0.0,
-                "monto_sin_imp__maximo": 0.0,
-                "monto_sin_imp__minimo": 0.0,
-                "fecha_de_publicacion": "no especificado",
-                "fecha_de_apertura": "no especificado",
+                "importe_drc": normalized_data.get('monto', 0.0),
+                "monto_sin_imp__maximo": normalized_data.get('monto', 0.0),
+                "monto_sin_imp__minimo": normalized_data.get('monto', 0.0),
+                "fecha_de_publicacion": fecha_pub or "no especificado",
+                "fecha_de_apertura": fecha_apertura or "no especificado",
                 "fecha_de_fallo": "no especificado",
-                "estatus_drc": "PUBLICADO",
+                "estatus_drc": normalized_data.get('estado', 'PUBLICADO').upper(),
                 "estatus_contrato": "PUBLICADO",
-                "url_anuncio": raw_data.get('url', ''),
+                "url_anuncio": normalized_data.get('url_original', ''),
                 "fuente": "licita_ya",
                 "rfc": "no especificado",
                 "proveedor": "no especificado",
-                "pais": raw_data.get('country', ''),
-                "estado": raw_data.get('state', ''),
-                "ciudad": raw_data.get('city', ''),
-                "search_keyword": raw_data.get('search_keyword', '')
+                "pais": normalized_data.get('pais', ''),
+                "estado": normalized_data.get('estado_geo', ''),  # Usar estado_geo para diferenciar de estatus
+                "ciudad": normalized_data.get('ciudad', ''),
+                "search_keyword": normalized_data.get('palabras_clave', [])[0] if normalized_data.get('palabras_clave') else ''
             }
 
             return metadata
@@ -410,39 +409,46 @@ class LicitaYaExtractor:
             logger.error(f"Error creando metadata: {e}")
             return {}
 
-    def create_texto_semantico(self, raw_data: Dict, metadata: Dict) -> str:
-        """Crear texto semántico siguiendo el formato del ejemplo"""
+    def create_texto_semantico(self, normalized_data: Dict, metadata: Dict) -> str:
+        """Crear texto semántico completo y uniforme"""
         try:
-            # Extraer información clave
+            # Extraer información clave desde metadata (ya normalizada)
             titulo = metadata.get('titulo', 'Sin título')
             institucion = metadata.get('institucion', 'Sin institución')
             url = metadata.get('url_anuncio', '')
             id_licitacion = metadata.get('id', '')
-            pais = metadata.get('pais', '')
-            estado = metadata.get('estado', '')
-            ciudad = metadata.get('ciudad', '')
-            search_keyword = metadata.get('search_keyword', '')
-
+            fecha_pub = metadata.get('fecha_de_publicacion', '')
+            monto = metadata.get('importe_drc', 0.0)
+            moneda = normalized_data.get('moneda', 'MXN')
+            
             # Descripción detallada
             descripcion_parts = []
+            
+            # Usar descripción normalizada si existe
+            desc_norm = normalized_data.get('descripcion')
+            if desc_norm and desc_norm != titulo:
+                descripcion_parts.append(desc_norm)
 
-            if raw_data.get('tender_object'):
-                descripcion_parts.append(f"Objeto: {raw_data['tender_object']}")
-
-            if raw_data.get('extra_info'):
-                descripcion_parts.append(f"Información adicional: {raw_data['extra_info']}")
-
+            search_keyword = metadata.get('search_keyword', '')
             if search_keyword:
-                descripcion_parts.append(f"Encontrada con keyword: {search_keyword}")
+                descripcion_parts.append(f"Categoría: {search_keyword}")
 
-            ubicacion = f"{ciudad}, {estado}, {pais}".strip(', ')
-            if ubicacion:
-                descripcion_parts.append(f"Ubicación: {ubicacion}")
+            ubicacion = []
+            if metadata.get('ciudad'): ubicacion.append(metadata['ciudad'])
+            if metadata.get('estado'): ubicacion.append(metadata['estado']) # Ojo: aqui metadata 'estado' es geo? No, en metadata mapeé geo a estado? 
+            # En create_metadata mapeé estado_geo -> estado (en el dict normalized_data necesito asegurar que exista estado_geo)
+            
+            ubicacion_str = ", ".join(ubicacion)
+            if ubicacion_str:
+                descripcion_parts.append(f"Ubicación: {ubicacion_str}")
 
             descripcion = '. '.join(descripcion_parts) if descripcion_parts else 'Sin descripción detallada'
+            
+            # Formatear monto
+            monto_str = f"${monto:,.2f} {moneda}" if monto > 0 else "Monto no especificado"
 
-            # Crear texto semántico
-            texto_semantico = f"""Licitación {id_licitacion}: {titulo.upper()}. Institución: {institucion}. Descripción: {descripcion}. Estado: PUBLICADO. URL: {url}."""
+            # Crear texto semántico uniforme
+            texto_semantico = f"""Licitación {id_licitacion}: {titulo.upper()}. Institución: {institucion}. Monto estimado: {monto_str}. Fecha de publicación: {fecha_pub}. Descripción: {descripcion}. Estado: {metadata.get('estatus_drc', 'PUBLICADO')}. URL: {url}."""
 
             return texto_semantico
 
@@ -456,13 +462,17 @@ class LicitaYaExtractor:
 
         for licitacion in licitaciones:
             try:
-                # Crear metadata y texto semántico
-                metadata = self.create_metadata(licitacion)
-                if not metadata or not metadata.get('titulo'):
+                # 1. Normalizar datos primero
+                normalized = self.normalize_licitacion_data(licitacion)
+                if not normalized or not normalized.get('titulo'):
                     logger.warning("Datos insuficientes para procesar licitación")
                     continue
 
-                texto_semantico = self.create_texto_semantico(licitacion, metadata)
+                # 2. Crear metadata desde datos normalizados
+                metadata = self.create_metadata(normalized)
+                
+                # 3. Crear texto semántico
+                texto_semantico = self.create_texto_semantico(normalized, metadata)
 
                 # Guardar en base de datos usando nueva estructura
                 update_id = self.db_manager.save_update(

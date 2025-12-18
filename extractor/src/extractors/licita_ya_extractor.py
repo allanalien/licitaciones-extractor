@@ -503,21 +503,33 @@ class LicitaYaExtractor:
         return processed_count
 
     def extract_keyword_based_data(self) -> Dict[str, Any]:
-        """Extraer datos basados en palabras clave para el día anterior"""
+        """Extraer datos basados en palabras clave para un rango de días"""
         logger.info("Iniciando extracción de Licita Ya...")
 
         try:
-            # Buscar licitaciones del día anterior (recomendación de Licita Ya)
-            target_date = datetime.now() - timedelta(days=1)
+            # Configurable lookback days (default 3 days to catch missed updates)
+            lookback_days = int(os.getenv('LICITA_YA_LOOKBACK_DAYS', 3))
+            today = datetime.now()
+            
+            all_licitaciones = []
+            seen_ids = set()
 
-            logger.info(f"Buscando licitaciones con keywords: {self.search_keywords}")
-            logger.info(f"Fecha objetivo: {target_date.date()}")
-
-            # Buscar por todas las keywords
-            licitaciones = self.search_all_keywords(target_date)
-
-            if not licitaciones:
-                logger.info("No se encontraron licitaciones con las keywords especificadas")
+            # Iterate from today backwards
+            for i in range(lookback_days):
+                target_date = today - timedelta(days=i)
+                logger.info(f"Procesando fecha objetivo: {target_date.date()}")
+                
+                # Buscar por todas las keywords para esta fecha
+                daily_licitaciones = self.search_all_keywords(target_date)
+                
+                for lic in daily_licitaciones:
+                    lic_id = (lic.get('unique_id') or lic.get('id') or lic.get('url'))
+                    if lic_id and lic_id not in seen_ids:
+                        seen_ids.add(lic_id)
+                        all_licitaciones.append(lic)
+            
+            if not all_licitaciones:
+                logger.info("No se encontraron licitaciones en el rango de fechas especificado")
                 return {
                     'status': 'success',
                     'source': 'licita_ya',
@@ -527,19 +539,19 @@ class LicitaYaExtractor:
                     'message': 'No hay nuevas licitaciones'
                 }
 
-            # Procesar licitaciones
-            processed_count = self.process_licitaciones(licitaciones)
+            # Procesar licitaciones acumuladas
+            processed_count = self.process_licitaciones(all_licitaciones)
 
             result = {
                 'status': 'success',
                 'source': 'licita_ya',
-                'total_found': len(licitaciones),
+                'total_found': len(all_licitaciones),
                 'total_processed': processed_count,
                 'keywords_used': self.search_keywords,
-                'target_date': target_date.strftime('%Y-%m-%d')
+                'date_range': f"{lookback_days} days until {today.strftime('%Y-%m-%d')}"
             }
 
-            logger.info(f"Extracción completada: {processed_count}/{len(licitaciones)} procesadas")
+            logger.info(f"Extracción completada: {processed_count}/{len(all_licitaciones)} procesadas")
             return result
 
         except Exception as e:
